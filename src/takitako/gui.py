@@ -48,25 +48,42 @@ class TakitakoApp(tk.Tk):
         self.holder_var = tk.StringVar(value="")
         ttk.Label(self, textvariable=self.holder_var, padding=(8, 4), font=("", 10, "bold")).pack(fill="x")
 
-        # Tableau des activites
-        columns = ("date", "heure", "activite", "poste", "equipage", "distance")
-        self.tree = ttk.Treeview(self, columns=columns, show="headings", height=18)
+        # Tableau des activites, regroupe par jour (un noeud repliable par
+        # journee avec un resume, les changements d'activite en dessous).
+        tree_frame = ttk.Frame(self)
+        tree_frame.pack(fill="both", expand=True, padx=8, pady=4)
+
+        columns = ("heure", "activite", "poste", "equipage")
+        self.tree = ttk.Treeview(tree_frame, columns=columns, show="tree headings", height=18)
+        self.tree.heading("#0", text="Journee")
+        self.tree.column("#0", width=420, anchor="w")
         headers = {
-            "date": "Date",
             "heure": "Heure",
             "activite": "Activite",
             "poste": "Poste",
             "equipage": "Equipage",
-            "distance": "Distance jour (km)",
         }
         for col in columns:
             self.tree.heading(col, text=headers[col])
             self.tree.column(col, width=120, anchor="center")
-        self.tree.pack(fill="both", expand=True, padx=8, pady=4)
 
-        scrollbar = ttk.Scrollbar(self.tree, orient="vertical", command=self.tree.yview)
-        self.tree.configure(yscroll=scrollbar.set)
-        scrollbar.pack(side="right", fill="y")
+        # Couleurs par type d'activite, pour reperer visuellement la journee
+        # d'un coup d'oeil (meme repliee : le resume reprend ces couleurs).
+        self.tree.tag_configure("jour", font=("", 9, "bold"), background="#e8e8e8")
+        self.tree.tag_configure("CONDUITE", foreground="#8a1f1f")
+        self.tree.tag_configure("TRAVAIL", foreground="#8a5a1f")
+        self.tree.tag_configure("DISPONIBILITE", foreground="#1f5a8a")
+        self.tree.tag_configure("REPOS", foreground="#1f7a3d")
+
+        vscroll = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscroll=vscroll.set)
+        self.tree.pack(side="left", fill="both", expand=True)
+        vscroll.pack(side="right", fill="y")
+
+        controls = ttk.Frame(self, padding=(8, 0))
+        controls.pack(fill="x")
+        ttk.Button(controls, text="Tout deplier", command=lambda: self._set_all_open(True)).pack(side="left", padx=2)
+        ttk.Button(controls, text="Tout replier", command=lambda: self._set_all_open(False)).pack(side="left", padx=2)
 
         # Journal
         log_frame = ttk.LabelFrame(self, text="Journal", padding=4)
@@ -185,23 +202,26 @@ class TakitakoApp(tk.Tk):
             self.holder_var.set("Titulaire non identifie (voir journal)")
 
         for day in card.daily_activities:
-            if not day.changes:
-                self.tree.insert(
-                    "", "end",
-                    values=(day.date.isoformat(), "", "", "", "", day.distance_km),
-                )
-                continue
+            totals = self._activity_totals_minutes(day.changes)
+            summary = " · ".join(
+                f"{label} {m // 60}h{m % 60:02d}" for label, m in totals.items() if m
+            )
+            label = f"{day.date.isoformat()}  ({day.distance_km} km)"
+            if summary:
+                label += f"  —  {summary}"
+            day_id = self.tree.insert("", "end", text=label, values=("", "", "", ""), tags=("jour",), open=False)
+
             for change in day.changes:
                 self.tree.insert(
-                    "", "end",
+                    day_id, "end",
+                    text="",
                     values=(
-                        day.date.isoformat(),
                         change.time_str,
                         change.activity,
                         "2nd conducteur" if change.slot_co_driver else "conducteur",
                         "oui" if change.crew else "non",
-                        day.distance_km,
                     ),
+                    tags=(change.activity,),
                 )
 
         for err in card.read_errors:
@@ -215,6 +235,25 @@ class TakitakoApp(tk.Tk):
         self.export_ddd_btn.config(state=state)
         self.export_csv_btn.config(state="normal" if card.daily_activities else "disabled")
         self.export_json_btn.config(state=state)
+
+    @staticmethod
+    def _activity_totals_minutes(changes) -> dict[str, int]:
+        """Duree cumulee (minutes) par activite au sein d'une journee, en
+        mesurant l'ecart entre chaque changement et le suivant (le dernier
+        va jusqu'a minuit). Purement indicatif : reste correct uniquement
+        si les horodatages de la journee sont tous coherents (voir
+        limitations connues du decodeur d'activite dans le README).
+        """
+        totals = {"CONDUITE": 0, "TRAVAIL": 0, "DISPONIBILITE": 0, "REPOS": 0}
+        for i, change in enumerate(changes):
+            end = changes[i + 1].time_minutes if i + 1 < len(changes) else 24 * 60
+            duration = max(end - change.time_minutes, 0)
+            totals[change.activity] = totals.get(change.activity, 0) + duration
+        return totals
+
+    def _set_all_open(self, open_: bool) -> None:
+        for item in self.tree.get_children(""):
+            self.tree.item(item, open=open_)
 
     def _on_read_error(self, message: str) -> None:
         self.read_button.config(state="normal")
