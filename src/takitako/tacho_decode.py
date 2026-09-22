@@ -47,16 +47,24 @@ def decode_time_real(data: bytes, offset: int = 0) -> dt.datetime | None:
     return dt.datetime.fromtimestamp(value, tz=dt.timezone.utc)
 
 
+def _bcd_byte(b: int) -> int:
+    return (b >> 4) * 10 + (b & 0x0F)
+
+
+def _bcd_to_int(raw: bytes) -> int:
+    value = 0
+    for b in raw:
+        value = value * 100 + _bcd_byte(b)
+    return value
+
+
 def decode_bcd_datef(data: bytes, offset: int = 0) -> dt.date | None:
     """Datef : annee (2 octets BCD), mois (1 octet BCD), jour (1 octet BCD)."""
     raw = _require(data, offset, 4, "Datef")
 
-    def bcd_byte(b: int) -> int:
-        return (b >> 4) * 10 + (b & 0x0F)
-
-    year = bcd_byte(raw[0]) * 100 + bcd_byte(raw[1])
-    month = bcd_byte(raw[2])
-    day = bcd_byte(raw[3])
+    year = _bcd_byte(raw[0]) * 100 + _bcd_byte(raw[1])
+    month = _bcd_byte(raw[2])
+    day = _bcd_byte(raw[3])
     if year == 0 or month == 0 or day == 0:
         return None
     try:
@@ -164,11 +172,12 @@ def decode_driver_activity_data(data: bytes) -> list[DailyActivityRecord]:
         if header == b"\x00" * 12 or header == b"\xff" * 12:
             break  # zone non utilisee du tampon circulaire
 
-        record_date = decode_bcd_datef(header, 4)
-        if record_date is None:
+        record_timestamp = decode_time_real(header, 4)
+        if record_timestamp is None:
             break
+        record_date = record_timestamp.date()
 
-        presence_counter = int.from_bytes(header[8:10], "big")
+        presence_counter = _bcd_to_int(header[8:10])
         distance_km = int.from_bytes(header[10:12], "big")
 
         record_length = int.from_bytes(header[2:4], "big")

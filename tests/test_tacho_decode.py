@@ -65,9 +65,8 @@ def test_activity_entry_time_str():
 def _build_daily_record(date: dt.date, distance_km: int, changes_raw: list[int]) -> bytes:
     changes_bytes = b"".join(v.to_bytes(2, "big") for v in changes_raw)
     record_length = 12 + len(changes_bytes)
-    date_bytes = bytes(
-        [bcd_byte(date.year // 100), bcd_byte(date.year % 100), bcd_byte(date.month), bcd_byte(date.day)]
-    )
+    midnight = dt.datetime(date.year, date.month, date.day, tzinfo=dt.timezone.utc)
+    date_bytes = int(midnight.timestamp()).to_bytes(4, "big")
     header = (
         (0).to_bytes(2, "big")  # previous record length (non utilise par le decodeur)
         + record_length.to_bytes(2, "big")

@@ -26,6 +26,7 @@ class TakitakoApp(tk.Tk):
         self._build_widgets()
         self._refresh_readers()
         self.after(100, self._poll_queue)
+        self.after(1500, self._auto_refresh_readers)
 
     # -- construction de l'interface -----------------------------------
     def _build_widgets(self) -> None:
@@ -101,6 +102,33 @@ class TakitakoApp(tk.Tk):
             self.reader_var.set(names[0])
         if not names:
             self.status_var.set("Aucun lecteur PC/SC detecte. Branche ton lecteur et clique sur Actualiser.")
+
+    def _auto_refresh_readers(self) -> None:
+        """Detecte automatiquement les lecteurs branches/debranches, sans
+        que l'utilisateur ait besoin de cliquer sur Actualiser. Suspendu
+        pendant une lecture en cours pour ne pas changer le lecteur sous
+        le pied d'une operation en cours.
+        """
+        if not (self._worker and self._worker.is_alive()):
+            try:
+                names = pcsc.list_reader_names()
+            except Exception:
+                names = []
+
+            current_values = list(self.reader_combo["values"])
+            if names != current_values:
+                self.reader_combo["values"] = names
+                selected = self.reader_var.get()
+                if selected not in names:
+                    self.reader_var.set(names[0] if names else "")
+                    if names:
+                        self.status_var.set(f"Lecteur detecte : {names[0]}")
+                    elif selected:
+                        self.status_var.set("Lecteur debranche.")
+                elif len(names) == 1 and not selected:
+                    self.reader_var.set(names[0])
+
+        self.after(1500, self._auto_refresh_readers)
 
     # -- lecture de la carte -----------------------------------------------
     def _start_read(self) -> None:
