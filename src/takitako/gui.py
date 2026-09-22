@@ -11,13 +11,20 @@ from tkinter import filedialog, messagebox, ttk
 from . import export, pcsc, tacho_reader
 from .models import DriverCardData
 
+ACTIVITY_COLORS = {
+    "CONDUITE": "#c0392b",
+    "TRAVAIL": "#d68910",
+    "DISPONIBILITE": "#2874a6",
+    "REPOS": "#1e8449",
+}
+
 
 class TakitakoApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.title("Takitako - Lecteur de carte conducteur")
-        self.geometry("900x600")
-        self.minsize(700, 450)
+        self.geometry("1000x720")
+        self.minsize(760, 500)
 
         self.card_data: DriverCardData | None = None
         self._queue: queue.Queue = queue.Queue()
@@ -48,10 +55,48 @@ class TakitakoApp(tk.Tk):
         self.holder_var = tk.StringVar(value="")
         ttk.Label(self, textvariable=self.holder_var, padding=(8, 4), font=("", 10, "bold")).pack(fill="x")
 
-        # Tableau des activites, regroupe par jour (un noeud repliable par
-        # journee avec un resume, les changements d'activite en dessous).
-        tree_frame = ttk.Frame(self)
-        tree_frame.pack(fill="both", expand=True, padx=8, pady=4)
+        # Barre d'export et journal : ancres en bas de la fenetre (side="bottom"),
+        # donc toujours visibles quelle que soit la taille de la fenetre - avant
+        # cette correction, ils pouvaient etre pousses hors ecran par le tableau.
+        bottom = ttk.Frame(self, padding=8)
+        bottom.pack(side="bottom", fill="x")
+        self.export_ddd_btn = ttk.Button(
+            bottom, text="Exporter .ddd (brut)", command=self._export_ddd, state="disabled"
+        )
+        self.export_csv_btn = ttk.Button(
+            bottom, text="Exporter CSV (activites)", command=self._export_csv, state="disabled"
+        )
+        self.export_json_btn = ttk.Button(
+            bottom, text="Exporter JSON (complet)", command=self._export_json, state="disabled"
+        )
+        self.export_ddd_btn.pack(side="left", padx=4)
+        self.export_csv_btn.pack(side="left", padx=4)
+        self.export_json_btn.pack(side="left", padx=4)
+
+        log_frame = ttk.LabelFrame(self, text="Journal", padding=4)
+        log_frame.pack(side="bottom", fill="x", padx=8, pady=4)
+        self.log_text = tk.Text(log_frame, height=6, state="disabled", wrap="word")
+        self.log_text.pack(fill="x")
+
+        # Le contenu principal (tableau / chronologie) remplit tout l'espace
+        # restant entre l'en-tete et la barre du bas.
+        notebook = ttk.Notebook(self)
+        notebook.pack(side="top", fill="both", expand=True, padx=8, pady=4)
+
+        table_tab = ttk.Frame(notebook)
+        timeline_tab = ttk.Frame(notebook)
+        notebook.add(table_tab, text="Tableau")
+        notebook.add(timeline_tab, text="Chronologie")
+
+        # -- onglet Tableau : activites regroupees par jour (un noeud
+        # repliable par journee avec un resume, les changements en dessous).
+        tree_frame = ttk.Frame(table_tab)
+        tree_frame.pack(fill="both", expand=True)
+
+        controls = ttk.Frame(table_tab, padding=(0, 4))
+        controls.pack(fill="x", side="bottom")
+        ttk.Button(controls, text="Tout deplier", command=lambda: self._set_all_open(True)).pack(side="left", padx=2)
+        ttk.Button(controls, text="Tout replier", command=lambda: self._set_all_open(False)).pack(side="left", padx=2)
 
         columns = ("heure", "activite", "poste", "equipage")
         self.tree = ttk.Treeview(tree_frame, columns=columns, show="tree headings", height=18)
@@ -80,32 +125,30 @@ class TakitakoApp(tk.Tk):
         self.tree.pack(side="left", fill="both", expand=True)
         vscroll.pack(side="right", fill="y")
 
-        controls = ttk.Frame(self, padding=(8, 0))
-        controls.pack(fill="x")
-        ttk.Button(controls, text="Tout deplier", command=lambda: self._set_all_open(True)).pack(side="left", padx=2)
-        ttk.Button(controls, text="Tout replier", command=lambda: self._set_all_open(False)).pack(side="left", padx=2)
+        # -- onglet Chronologie : une frise horizontale coloree par jour
+        # (conduite/travail/disponibilite/repos sur 24h), plus parlant
+        # qu'une liste pour voir la structure d'une journee d'un coup d'oeil.
+        timeline_container = ttk.Frame(timeline_tab)
+        timeline_container.pack(fill="both", expand=True)
 
-        # Journal
-        log_frame = ttk.LabelFrame(self, text="Journal", padding=4)
-        log_frame.pack(fill="x", padx=8, pady=4)
-        self.log_text = tk.Text(log_frame, height=6, state="disabled", wrap="word")
-        self.log_text.pack(fill="x")
+        legend = ttk.Frame(timeline_tab, padding=(0, 4))
+        legend.pack(fill="x", side="bottom")
+        for label, color in ACTIVITY_COLORS.items():
+            swatch = tk.Canvas(legend, width=14, height=14, highlightthickness=0)
+            swatch.create_rectangle(0, 0, 14, 14, fill=color, outline="")
+            swatch.pack(side="left", padx=(8, 2))
+            ttk.Label(legend, text=label.capitalize()).pack(side="left")
 
-        # Export
-        bottom = ttk.Frame(self, padding=8)
-        bottom.pack(fill="x")
-        self.export_ddd_btn = ttk.Button(
-            bottom, text="Exporter .ddd (brut)", command=self._export_ddd, state="disabled"
+        self.timeline_canvas = tk.Canvas(timeline_container, background="white", highlightthickness=0)
+        timeline_vscroll = ttk.Scrollbar(
+            timeline_container, orient="vertical", command=self.timeline_canvas.yview
         )
-        self.export_csv_btn = ttk.Button(
-            bottom, text="Exporter CSV (activites)", command=self._export_csv, state="disabled"
+        self.timeline_canvas.configure(yscrollcommand=timeline_vscroll.set)
+        self.timeline_canvas.pack(side="left", fill="both", expand=True)
+        timeline_vscroll.pack(side="right", fill="y")
+        self.timeline_canvas.bind(
+            "<Configure>", lambda event: self._redraw_timeline() if self.card_data else None
         )
-        self.export_json_btn = ttk.Button(
-            bottom, text="Exporter JSON (complet)", command=self._export_json, state="disabled"
-        )
-        self.export_ddd_btn.pack(side="left", padx=4)
-        self.export_csv_btn.pack(side="left", padx=4)
-        self.export_json_btn.pack(side="left", padx=4)
 
     # -- lecteurs ---------------------------------------------------------
     def _refresh_readers(self) -> None:
@@ -236,6 +279,52 @@ class TakitakoApp(tk.Tk):
         self.export_csv_btn.config(state="normal" if card.daily_activities else "disabled")
         self.export_json_btn.config(state=state)
 
+        self._redraw_timeline()
+
+    def _redraw_timeline(self) -> None:
+        canvas = self.timeline_canvas
+        canvas.delete("all")
+        if not self.card_data or not self.card_data.daily_activities:
+            return
+
+        width = canvas.winfo_width()
+        if width < 50:
+            return
+
+        label_width, margin = 110, 10
+        timeline_x0 = label_width
+        timeline_width = max(width - label_width - margin, 100)
+        row_height, row_gap, header_height = 20, 3, 22
+        total_height = header_height + len(self.card_data.daily_activities) * (row_height + row_gap)
+
+        for h in range(0, 25, 3):
+            x = timeline_x0 + timeline_width * h / 24
+            canvas.create_line(x, header_height, x, total_height, fill="#e6e6e6")
+            canvas.create_text(x, header_height - 9, text=f"{h}h", font=("", 7), fill="#666666")
+
+        y = header_height
+        for day in self.card_data.daily_activities:
+            canvas.create_text(5, y + row_height / 2, text=day.date.isoformat(), anchor="w", font=("", 8))
+            canvas.create_rectangle(
+                timeline_x0, y, timeline_x0 + timeline_width, y + row_height, fill="#f2f2f2", outline=""
+            )
+            changes = day.changes
+            for i, change in enumerate(changes):
+                end = changes[i + 1].time_minutes if i + 1 < len(changes) else 24 * 60
+                start_m = max(min(change.time_minutes, 1440), 0)
+                end_m = max(min(end, 1440), 0)
+                if end_m <= start_m:
+                    continue
+                x1 = timeline_x0 + timeline_width * start_m / 1440
+                x2 = timeline_x0 + timeline_width * end_m / 1440
+                canvas.create_rectangle(
+                    x1, y, x2, y + row_height,
+                    fill=ACTIVITY_COLORS.get(change.activity, "#999999"), outline="",
+                )
+            y += row_height + row_gap
+
+        canvas.configure(scrollregion=(0, 0, width, y + 10))
+
     @staticmethod
     def _activity_totals_minutes(changes) -> dict[str, int]:
         """Duree cumulee (minutes) par activite au sein d'une journee, en
@@ -266,6 +355,7 @@ class TakitakoApp(tk.Tk):
         self.holder_var.set("")
         for item in self.tree.get_children():
             self.tree.delete(item)
+        self.timeline_canvas.delete("all")
         self.log_text.config(state="normal")
         self.log_text.delete("1.0", "end")
         self.log_text.config(state="disabled")
