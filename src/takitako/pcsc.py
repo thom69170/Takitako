@@ -108,15 +108,22 @@ def read_elementary_file(
 
     chunks: list[bytes] = []
     offset = 0
+    chunk_size = apdu.READ_CHUNK_SIZE
     while offset < max_size:
-        length = min(apdu.READ_CHUNK_SIZE, max_size - offset)
+        length = min(chunk_size, max_size - offset)
         try:
             data = transmit(connection, apdu.read_binary(offset, length))
-        except ApduError as exc:
-            if (exc.sw1, exc.sw2) in ((0x6B, 0x00), (0x6A, 0x86)):
-                # Fin de fichier atteinte.
-                break
-            raise
+        except ApduError:
+            # Certaines cartes ne renvoient pas le SW standard de fin de
+            # fichier (6B00) quand on demande plus d'octets qu'il n'en
+            # reste : elles rejettent la commande (ex: 6700 "longueur
+            # incorrecte"). On reessaie alors avec une longueur plus
+            # courte avant de conclure qu'on a atteint la fin reelle du
+            # fichier - sans jamais perdre les blocs deja lus avec succes.
+            if length > 1:
+                chunk_size = max(length // 2, 1)
+                continue
+            break
         if not data:
             break
         chunks.append(data)
@@ -124,6 +131,7 @@ def read_elementary_file(
         if len(data) < length:
             # Le lecteur/la carte a renvoye moins que demande : fin de fichier.
             break
+        chunk_size = apdu.READ_CHUNK_SIZE
 
     return b"".join(chunks)
 
