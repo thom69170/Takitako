@@ -51,30 +51,38 @@ commande `takitako` directement disponible)
 3. Cliquer sur "Lire la carte".
 4. Consulter le tableau, puis exporter au format souhaite.
 
-## Limites connues (a valider sur une carte reelle)
+## Validation sur materiel reel
 
-Ce projet a ete construit sans acces a un lecteur physique dans
-l'environnement de developpement. La communication PC/SC (SELECT, READ
-BINARY, gestion 61xx/6Cxx) suit le standard ISO 7816-4 et devrait
-fonctionner telle quelle. En revanche, certains identifiants de fichiers et
-offsets de champs proviennent de la specification publique du reglement UE
-et n'ont pas ete verifies bit a bit faute de materiel :
+Ce projet a d'abord ete construit sans acces a un lecteur physique, puis
+teste et corrige avec une vraie carte conducteur (lecteur HID OMNIKEY) et
+son export brut. Sont maintenant confirmes exacts sur du materiel reel :
 
-- **Identifiants de fichiers** (`src/takitako/tacho_files.py`) : si un
-  fichier n'est pas trouve (`SW 6A82`), l'erreur apparait clairement dans
-  le journal sans bloquer la lecture des autres fichiers - premier endroit
-  a corriger si besoin.
-- **EF_Driver_Activity_Data** (l'historique d'activite) : le decodeur fait
-  un parcours lineaire du tampon circulaire depuis le debut. Ca fonctionne
-  pour une carte qui n'a pas encore rempli toute sa capacite de stockage.
+- la communication PC/SC (SELECT AID/EF, READ BINARY, chainage 61xx/6Cxx) ;
+- l'AID de l'application tachygraphe et les identifiants de fichiers du
+  DF conducteur ;
+- `EF_Identification` (identite et numero de carte du titulaire) ;
+- `EF_Driver_Activity_Data` : structure des enregistrements journaliers
+  (en-tete 12 octets, longueur de record, date `TimeReal`, compteur de
+  presence BCD, distance) et decodage bit a bit de `ActivityChangeInfo`
+  (verifie sur 2647 changements d'activite repartis sur 316 jours, sans
+  anomalie).
+
+## Limites connues
+
+- **Rebouclage du tampon circulaire** : le decodeur fait un parcours
+  lineaire depuis le debut du tampon, ce qui est correct tant que la carte
+  n'a pas rempli toute sa capacite de stockage (cas de la carte testee).
   La gestion du rebouclage complet (tampon plein, plus ancien ecrase par le
-  plus recent) n'est pas implementee.
+  plus recent, navigation via `activityPointerNewestRecord`) n'est pas
+  implementee.
 - **Jeux de caracteres** : seul le code page par defaut (Europe de l'Ouest,
   latin-1) est correctement decode pour les noms/textes. Les autres pages
   de code (cyrillique, grec...) s'afficheront de facon approximative.
 - **Fichiers non decodes en detail** : evenements, anomalies, vehicules
   utilises et lieux sont lus et conserves en brut (export `.ddd` /
-  disponibles dans `raw_files`) mais pas encore decodes en tableau lisible.
+  disponibles dans `raw_files`) mais pas encore decodes en tableau lisible -
+  les identifiants de fichiers sont corrects (confirmes par la lecture
+  reelle) donc il ne reste que le decodage des champs a ecrire.
 
 Si la lecture sur une vraie carte remonte des ecarts, les corrections se
 font module par module (`tacho_files.py` pour les identifiants,

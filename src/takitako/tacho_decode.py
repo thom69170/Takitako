@@ -139,12 +139,18 @@ def decode_activity_change_info(raw: int) -> tuple[bool, bool, str, int]:
       bit 15    : slot        (0 = conducteur, 1 = second conducteur)
       bit 14    : equipage     (0 = seul, 1 = equipage)
       bits 13-12: activite     (00 repos, 01 disponibilite, 10 travail, 11 conduite)
-      bits 11-0 : minutes depuis 00:00 (0-1439)
+      bit 11    : non utilise pour l'heure (reserve/indicatif - non interprete ici)
+      bits 10-0 : minutes depuis 00:00 (0-1439)
+
+    Le bit 11 a ete identifie comme distinct du champ minutes en comparant
+    le decodage a des donnees reelles d'une carte physique (des minutes
+    calculees sur 12 bits depassaient parfois 24h ; les valeurs redeviennent
+    coherentes et chronologiques une fois ce bit exclu du calcul).
     """
     slot_co_driver = bool((raw >> 15) & 0x1)
     crew = bool((raw >> 14) & 0x1)
     activity_code = (raw >> 12) & 0b11
-    time_minutes = raw & 0x0FFF
+    time_minutes = raw & 0x07FF
     return slot_co_driver, crew, ACTIVITY_LABELS[activity_code], time_minutes
 
 
