@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "takitako"
+version = "0.1.0"
+description = "Lecteur de carte conducteur tachygraphe (PC/SC) avec interface graphique"
+requires-python = ">=3.10"
+dependencies = [
+    "pyscard>=2.0.7",
+]
+
+[project.scripts]
+takitako = "takitako.gui:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
