@@ -39,17 +39,23 @@ def write_activity_csv(card: DriverCardData, path: str | Path) -> None:
     with path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow(
-            ["date", "heure", "activite", "poste", "equipage", "distance_jour_km", "compteur_presence"]
+            [
+                "date", "heure_utc", "heure_locale", "activite", "poste", "equipage",
+                "distance_jour_km", "compteur_presence",
+            ]
         )
         for day in card.daily_activities:
             if not day.changes:
-                writer.writerow([day.date.isoformat(), "", "", "", "", day.distance_km, day.presence_counter])
+                writer.writerow(
+                    [day.date.isoformat(), "", "", "", "", "", day.distance_km, day.presence_counter]
+                )
                 continue
             for change in day.changes:
                 writer.writerow(
                     [
                         day.date.isoformat(),
                         change.time_str,
+                        change.local_time_str(day.date),
                         change.activity,
                         "second conducteur" if change.slot_co_driver else "conducteur",
                         "oui" if change.crew else "non",
@@ -75,7 +81,8 @@ def write_json(card: DriverCardData, path: str | Path) -> None:
                 "distance_km": day.distance_km,
                 "changements": [
                     {
-                        "heure": c.time_str,
+                        "heure_utc": c.time_str,
+                        "heure_locale": c.local_time_str(day.date),
                         "activite": c.activity,
                         "second_conducteur": c.slot_co_driver,
                         "equipage": c.crew,

@@ -25,16 +25,34 @@ class CardHolderIdentity:
 
 @dataclass
 class ActivityEntry:
-    """Un changement d'activite au sein d'une journee (ActivityChangeInfo)."""
+    """Un changement d'activite au sein d'une journee (ActivityChangeInfo).
+
+    `time_minutes` est exprime en minutes depuis 00:00 **UTC** le jour de
+    l'enregistrement (`activityRecordDate` sur la carte est un TimeReal,
+    donc en UTC - c'est la norme du reglement tachygraphe). Utiliser
+    `local_time_str()`/`utc_datetime()` pour obtenir l'heure locale de
+    l'utilisateur (ce que l'interface affiche), `time_str` reste l'heure
+    UTC brute.
+    """
 
     slot_co_driver: bool  # False = conducteur, True = second conducteur
     crew: bool  # False = conduite seul(e), True = equipage
     activity: str  # "REPOS", "DISPONIBILITE", "TRAVAIL", "CONDUITE"
-    time_minutes: int  # minutes depuis 00:00 le jour concerne
+    time_minutes: int  # minutes depuis 00:00 UTC le jour concerne
 
     @property
     def time_str(self) -> str:
+        """Heure UTC brute (HH:MM), telle qu'enregistree sur la carte."""
         return f"{self.time_minutes // 60:02d}:{self.time_minutes % 60:02d}"
+
+    def utc_datetime(self, day: dt.date) -> dt.datetime:
+        return dt.datetime(day.year, day.month, day.day, tzinfo=dt.timezone.utc) + dt.timedelta(
+            minutes=self.time_minutes
+        )
+
+    def local_time_str(self, day: dt.date) -> str:
+        """Heure locale (fuseau du systeme executant l'appli), pour affichage."""
+        return self.utc_datetime(day).astimezone().strftime("%H:%M")
 
 
 @dataclass

@@ -18,6 +18,16 @@ ACTIVITY_COLORS = {
     "REPOS": "#1e8449",
 }
 
+# Libelle affiche dans la legende : la disponibilite est une categorie
+# reglementaire distincte du repos (elle ne compte pas comme temps de repos
+# journalier/hebdomadaire), une confusion frequente vu de l'exterieur.
+ACTIVITY_LEGEND_LABELS = {
+    "CONDUITE": "Conduite",
+    "TRAVAIL": "Travail",
+    "DISPONIBILITE": "Disponibilite (≠ repos reglementaire)",
+    "REPOS": "Repos",
+}
+
 
 class TakitakoApp(tk.Tk):
     def __init__(self) -> None:
@@ -103,7 +113,7 @@ class TakitakoApp(tk.Tk):
         self.tree.heading("#0", text="Journee")
         self.tree.column("#0", width=420, anchor="w")
         headers = {
-            "heure": "Heure",
+            "heure": "Heure (locale)",
             "activite": "Activite",
             "poste": "Poste",
             "equipage": "Equipage",
@@ -259,7 +269,7 @@ class TakitakoApp(tk.Tk):
                     day_id, "end",
                     text="",
                     values=(
-                        change.time_str,
+                        change.local_time_str(day.date),
                         change.activity,
                         "2nd conducteur" if change.slot_co_driver else "conducteur",
                         "oui" if change.crew else "non",
@@ -300,7 +310,7 @@ class TakitakoApp(tk.Tk):
         for h in range(0, 25, 3):
             x = timeline_x0 + timeline_width * h / 24
             canvas.create_line(x, header_height, x, total_height, fill="#e6e6e6")
-            canvas.create_text(x, header_height - 9, text=f"{h}h", font=("", 7), fill="#666666")
+            canvas.create_text(x, header_height - 9, text=f"{h}h UTC", font=("", 7), fill="#666666")
 
         y = header_height
         for day in self.card_data.daily_activities:
