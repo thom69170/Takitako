@@ -8,8 +8,17 @@ a puce PC/SC, avec une interface graphique simple (Tkinter).
 - Detecte le(s) lecteur(s) PC/SC branches et la carte inseree.
 - Selectionne l'application tachygraphe de la carte et lit ses fichiers
   (identite du titulaire, historique d'activite journaliere, etc.).
-- Affiche les activites (conduite / travail / disponibilite / repos) jour
-  par jour dans un tableau.
+- Affiche les activites (conduite / travail / disponibilite / repos) :
+  - **Tableau de bord** : temps de service (conduite + travail +
+    disponibilite) et heures de nuit sur une periode choisie (aujourd'hui,
+    7/30 derniers jours, mois courant/precedent, tout), plus un total
+    d'infractions detectees ;
+  - **Carte chrono** : frise horizontale par jour (00h-24h), blocs colores
+    par activite, jours sans donnees affiches en creux, marqueurs rouges
+    sur les infractions ;
+  - **Tableau** : liste classique regroupee par jour, repliable ;
+  - **Infractions** : detection partielle du reglement (CE) 561/2006 (voir
+    plus bas).
 - Exporte :
   - un dump brut `.ddd` (concat. TAG+LONGUEUR+DONNEES de chaque fichier lu,
     utile comme archive) ;
@@ -67,6 +76,33 @@ son export brut. Sont maintenant confirmes exacts sur du materiel reel :
   (verifie sur 2647 changements d'activite repartis sur 316 jours, sans
   anomalie).
 
+## Detection d'infractions - portee limitee
+
+L'onglet Infractions (et les marqueurs rouges sur la Carte chrono)
+verifient un **sous-ensemble** des regles du reglement (CE) n. 561/2006 :
+
+- conduite continue > 4h30 sans coupure d'au moins 45 min ;
+- conduite journaliere > 9h (info, extension a 10h autorisee 2x/semaine -
+  non comptee) / > 10h (infraction, maximum absolu) ;
+- repos journalier : bloc de repos continu (chevauchant la nuit, 0h-5h)
+  insuffisant (< 9h, infraction) ou reduit (9h-11h, info - la limite de
+  3 reductions/semaine n'est pas comptee).
+
+**Ne sont pas verifies** : les limites hebdomadaires (56h/semaine, 90h sur
+2 semaines), le repos hebdomadaire (45h / reduction a 24h et sa
+compensation), le repos journalier fractionne 3h+9h, les regles
+specifiques a la conduite en equipage. Ce n'est **ni un logiciel homologue
+de controle reglementaire ni un avis juridique**.
+
+**"Donnees suspectes"** : un segment d'activite (hors repos) qui dure
+anormalement longtemps sans le moindre changement enregistre (> 6h pour de
+la conduite, > 24h pour du travail/de la disponibilite) est presume etre
+un trou de donnees (carte laissee dans un vehicule inactif, retrait de
+carte sans declaration manuelle) plutot qu'une vraie activite continue. Il
+est exclu des totaux du tableau de bord et des calculs d'infraction, et
+signale a part - a verifier manuellement sur le `.ddd` brut si le total
+d'un jour donne parait faux.
+
 ## Limites connues
 
 - **Rebouclage du tampon circulaire** : le decodeur fait un parcours
@@ -97,8 +133,9 @@ pytest
 ```
 
 Les tests couvrent le decodage binaire (dates BCD, horodatage, changements
-d'activite, identification) avec des donnees synthetiques - ils ne
-necessitent pas de lecteur ni de carte.
+d'activite, identification) et la detection d'infractions (conduite
+continue, conduite journaliere, repos journalier, donnees suspectes) avec
+des donnees synthetiques - ils ne necessitent pas de lecteur ni de carte.
 
 ## Structure du projet
 
@@ -110,8 +147,12 @@ src/takitako/
   tacho_decode.py  decodage des structures binaires
   tacho_reader.py  orchestration lecture + decodage, tolerante aux erreurs
   models.py        structures de donnees decodees
+  local_view.py    reconstruction en heure locale, journee civile locale
+  compliance.py    detection partielle du reglement 561/2006
   export.py        export .ddd / CSV / JSON
-  gui.py           interface graphique Tkinter
+  gui.py           interface graphique Tkinter (tableau de bord, carte
+                    chrono, tableau, infractions)
 tests/
   test_tacho_decode.py
+  test_compliance.py
 ```
